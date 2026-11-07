@@ -1,7 +1,6 @@
 import os
 import json
 import requests
-from yt_dlp import YoutubeDL
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 
 # 1. Load Configuration
@@ -12,48 +11,18 @@ if not config.get("workflow_enabled", False):
     print("Workflow is disabled in config.json. Exiting.")
     exit(0)
 
-# 2. Read URLs from urls.txt
-with open("urls.txt", "r") as f:
-    lines = f.readlines()
+# Local audio ဖိုင်ကို သုံးမည် (သို့မဟုတ် urls.txt အစား ရှင်းလင်းသော audio source)
+audio_path = "audio.mp3"
 
-target_url = None
-target_index = -1
+if not os.path.exists(audio_path):
+    print(f"Error: Audio file '{audio_path}' not found in repository. Please add an audio file.")
+    exit(1)
 
-for i, line in enumerate(lines):
-    line = line.strip()
-    if line and not line.startswith("#"):
-        target_url = line
-        target_index = i
-        break
-
-if not target_url:
-    print("No pending URLs found in urls.txt.")
-    exit(0)
-
-print(f"Processing URL: {target_url}")
-
-# 3. Download Audio using yt-dlp (Updated with client extractor settings)
-audio_opts = {
-    'format': 'bestaudio/best',
-    'outtmpl': 'temp_audio.%(ext)s',
-    'no_playlist': True,
-    'extractor-args': {'youtube': {'player-client': ['android', 'web']}},
-    'postprocessors': [{
-        'key': 'FFmpegExtractAudio',
-        'preferredcodec': 'mp3',
-        'preferredquality': '192',
-    }],
-}
-
-with YoutubeDL(audio_opts) as ydl:
-    ydl.download([target_url])
-
-audio_path = "temp_audio.mp3"
 audio_clip = AudioFileClip(audio_path)
 audio_duration = audio_clip.duration
-print(f"Audio downloaded. Duration: {audio_duration} seconds")
+print(f"Loaded Audio. Duration: {audio_duration} seconds")
 
-# 4. Fetch Images from Wikimedia Commons API (No API Key / No VPN needed)
+# 2. Fetch Images from Wikimedia Commons API (No API Key / No VPN needed)
 query = config.get("search_query", "Buddha meditation")
 image_duration = config.get("image_duration", 5)
 num_images_needed = int(audio_duration / image_duration) + 1
@@ -70,7 +39,6 @@ if response.status_code == 200:
     for page_id, page_info in pages.items():
         if "imageinfo" in page_info:
             img_url = page_info["imageinfo"][0]["url"]
-            # ဒေါင်းလုပ်ဆွဲခြင်း
             img_data = requests.get(img_url, headers=headers).content
             img_file = f"temp_img_{len(images)}.jpg"
             with open(img_file, "wb") as handler:
@@ -84,7 +52,7 @@ if not images:
 
 print(f"Successfully fetched {len(images)} images.")
 
-# 5. Render Video using MoviePy
+# 3. Render Video using MoviePy
 clips = []
 for i in range(int(audio_duration)):
     img_path = images[(i // image_duration) % len(images)]
@@ -100,10 +68,5 @@ video.write_videofile(output_video, fps=24, codec="libx264", audio_codec="aac")
 # Cleanup clips
 audio_clip.close()
 video.close()
-
-# 6. Mark URL as DONE in urls.txt
-lines[target_index] = f"# [DONE] {target_url}\n"
-with open("urls.txt", "w") as f:
-    f.writelines(lines)
 
 print("Video rendering completed successfully!")
