@@ -4,7 +4,7 @@ import requests
 from yt_dlp import YoutubeDL
 from moviepy.editor import ImageClip, AudioFileClip, concatenate_videoclips
 
-# Load Configuration
+# 1. Load Configuration
 with open("config.json", "r") as f:
     config = json.load(f)
 
@@ -12,7 +12,7 @@ if not config.get("workflow_enabled", False):
     print("Workflow is disabled in config.json. Exiting.")
     exit(0)
 
-# Read URLs
+# 2. Read URLs from urls.txt
 with open("urls.txt", "r") as f:
     lines = f.readlines()
 
@@ -32,7 +32,7 @@ if not target_url:
 
 print(f"Processing URL: {target_url}")
 
-# 1. Download Audio using yt-dlp
+# 3. Download Audio using yt-dlp
 audio_opts = {
     'format': 'bestaudio/best',
     'outtmpl': 'temp_audio.%(ext)s',
@@ -51,37 +51,38 @@ audio_clip = AudioFileClip(audio_path)
 audio_duration = audio_clip.duration
 print(f"Audio downloaded. Duration: {audio_duration} seconds")
 
-# 2. Fetch Images (Using Pexels or Pixabay API / Or placeholder logic)
-# Note: Pexels API key ကို GitHub Secrets ထဲမှာ ထည့်ထားရပါမယ်။
-PEXELS_API_KEY = os.environ.get("PEXELS_API_KEY", "")
-query = config.get("search_query", "buddha meditation")
+# 4. Fetch Images from Wikimedia Commons API (No API Key / No VPN needed)
+query = config.get("search_query", "Buddha meditation")
 image_duration = config.get("image_duration", 5)
 num_images_needed = int(audio_duration / image_duration) + 1
 
+wiki_url = f"https://commons.wikimedia.org/w/api.php?action=query&generator=search&gsrsearch={query}&gsrnamespace=6&gsrlimit={min(num_images_needed, 15)}&prop=imageinfo&iiprop=url&format=json"
+
+headers = {'User-Agent': 'AutoVideoRenderBot/1.0 (Contact: user@example.com)'}
+response = requests.get(wiki_url, headers=headers)
+
 images = []
-if PEXELS_API_KEY:
-    headers = {"Authorization": PEXELS_API_KEY}
-    response = requests.get(
-        f"https://api.pexels.com/v1/search?query={query}&per_page={min(num_images_needed, 15)}",
-        headers=headers
-    )
-    if response.status_code == 200:
-        data = response.json()
-        photos = data.get("photos", [])
-        for idx, photo in enumerate(photos):
-            img_url = photo["src"]["large"]
-            img_data = requests.get(img_url).content
-            img_file = f"temp_img_{idx}.jpg"
+if response.status_code == 200:
+    data = response.json()
+    pages = data.get("query", {}).get("pages", {})
+    for page_id, page_info in pages.items():
+        if "imageinfo" in page_info:
+            img_url = page_info["imageinfo"][0]["url"]
+            # ဒေါင်းလုပ်ဆွဲခြင်း
+            img_data = requests.get(img_url, headers=headers).content
+            img_file = f"temp_img_{len(images)}.jpg"
             with open(img_file, "wb") as handler:
                 handler.write(img_data)
             images.append(img_file)
 
 if not images:
-    print("Error: Could not fetch images or API key missing.")
+    print("Error: Could not fetch images from Wikimedia Commons.")
     audio_clip.close()
     exit(1)
 
-# 3. Render Video using MoviePy
+print(f"Successfully fetched {len(images)} images.")
+
+# 5. Render Video using MoviePy
 clips = []
 for i in range(int(audio_duration)):
     img_path = images[(i // image_duration) % len(images)]
@@ -98,9 +99,9 @@ video.write_videofile(output_video, fps=24, codec="libx264", audio_codec="aac")
 audio_clip.close()
 video.close()
 
-# 4. Mark URL as DONE in urls.txt
+# 6. Mark URL as DONE in urls.txt
 lines[target_index] = f"# [DONE] {target_url}\n"
 with open("urls.txt", "w") as f:
     f.writelines(lines)
 
-print("Video rendering complete successfully!")
+print("Video rendering completed successfully!")
