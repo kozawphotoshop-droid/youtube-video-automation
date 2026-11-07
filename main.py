@@ -32,10 +32,12 @@ if not target_url:
 
 print(f"Processing URL: {target_url}")
 
-# 3. Download Audio using yt-dlp
+# 3. Download Audio using yt-dlp (Updated with client extractor settings)
 audio_opts = {
     'format': 'bestaudio/best',
     'outtmpl': 'temp_audio.%(ext)s',
+    'no_playlist': True,
+    'extractor-args': {'youtube': {'player-client': ['android', 'web']}},
     'postprocessors': [{
         'key': 'FFmpegExtractAudio',
         'preferredcodec': 'mp3',
