@@ -1,0 +1,35 @@
+name: Auto Video Render
+
+on:
+  workflow_dispatch: # Manual Run ခလုတ်ပါဝင်မည်
+  schedule:
+    - cron: '0 0 * * *' # နေ့စဉ် တစ်ကြိမ် (လိုသလို ပြင်နိုင်သည်)
+
+jobs:
+  render:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+
+      - name: Install FFmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: Install Dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Video Renderer
+        env:
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
+        run: python main.py
+
+      - name: Commit and Push Processed URLs
+        uses: stefanzweifel/git-auto-commit-action@v4
+        with:
+          commit_message: "Auto: Processed YouTube link and updated urls.txt"
+          file_pattern: urls.txt
